@@ -37,10 +37,21 @@ def extract_text(filepath):
                 page_text = page.extract_text()
                 if page_text:
                     text += page_text + "\n"
+                for h in (page.hyperlinks or []):
+                    if h.get("uri"):
+                        text += "\n" + h["uri"]
         return text
     elif ext in (".docx", ".doc"):
         d = docx.Document(filepath)
-        return "\n".join(p.text for p in d.paragraphs)
+        parts = [p.text for p in d.paragraphs]
+        for t in d.tables:
+            for row in t.rows:
+                for cell in row.cells:
+                    parts.append(cell.text)
+        for rel in d.part.rels.values():
+            if "hyperlink" in rel.reltype:
+                parts.append(rel.target_ref)
+        return "\n".join(parts)
     else:
         raise ValueError(f"Unsupported file type: {ext}")
 
@@ -78,10 +89,13 @@ def extract_phone(text):
     return None
 
 
-def extract_skills(text):
+ALL_SKILLS = sorted(set(SKILLS_DB) | {x for v in ROLE_SKILLS.values() for x in v})
+
+
+def extract_skills(text, extra=None):
     text_lower = text.lower()
     found = set()
-    for skill in SKILLS_DB:
+    for skill in set(ALL_SKILLS) | set(extra or []):
         pattern = r"(?<![a-zA-Z])" + re.escape(skill) + r"(?![a-zA-Z])"
         if re.search(pattern, text_lower):
             found.add(skill)
@@ -125,13 +139,15 @@ def score_resume(parsed):
     return {"total": min(score, 100), "breakdown": breakdown}
 
 
-def role_fit(parsed, role):
-    """Percentage match against a target role's expected skill set,
-    plus the list of missing skills for that role."""
-    if role not in ROLE_SKILLS:
+def role_fit(parsed, role, custom=None):
+    """Percentage match against a role's skill set (or custom skills)."""
+    if custom:
+        required, role = set(custom), "your custom skills"
+    elif role in ROLE_SKILLS:
+        required = set(ROLE_SKILLS[role])
+    else:
         return None
 
-    required = set(ROLE_SKILLS[role])
     have = set(parsed["skills"])
     matched = required & have
     missing = required - have
@@ -170,7 +186,7 @@ def compute_insights(text):
         "action_verbs": len({w for w in words if w in ACTION_VERBS}),
         "metrics": len(re.findall(r"\d+(?:\.\d+)?\s*(?:%|\+|k\b|x\b)", low)),
         "sections": sections,
-        "links": {"GitHub": "github.com" in low, "LinkedIn": "linkedin.com" in low},
+        "links": {"GitHub": "github" in low, "LinkedIn": "linkedin" in low},
     }
 
 
@@ -221,7 +237,7 @@ def generate_suggestions(parsed, score, rf=None, ins=None):
     return tips
 
 
-def analyze(filepath, target_role=None):
+def analyze(filepath, target_role=None, custom_skills=None):
     text = extract_text(filepath)
     doc = nlp(text)
 
@@ -229,14 +245,14 @@ def analyze(filepath, target_role=None):
         "name": extract_name(text, doc),
         "email": extract_email(text),
         "phone": extract_phone(text),
-        "skills": extract_skills(text),
+        "skills": extract_skills(text, custom_skills),
         "education": extract_education(text),
         "experience": extract_experience(text),
     }
 
     ins = compute_insights(text)
     score = score_resume(parsed)
-    rf = role_fit(parsed, target_role) if target_role else None
+    rf = role_fit(parsed, target_role, custom_skills) if (target_role or custom_skills) else None
 
     result = {
         "parsed": parsed,

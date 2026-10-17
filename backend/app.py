@@ -3,6 +3,7 @@ import uuid
 from flask import Flask, request, jsonify, send_from_directory
 
 from resume_core import analyze
+from skills_list import ROLE_SKILLS
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
@@ -22,6 +23,11 @@ def index():
     return send_from_directory(FRONTEND_DIR, "index.html")
 
 
+@app.route("/api/roles")
+def api_roles():
+    return jsonify(list(ROLE_SKILLS.keys()))
+
+
 @app.route("/api/analyze", methods=["POST"])
 def api_analyze():
     if "resume" not in request.files:
@@ -36,13 +42,14 @@ def api_analyze():
         return jsonify({"error": f"Unsupported file type '{ext}'. Use PDF or DOCX."}), 400
 
     target_role = request.form.get("role") or None
+    custom = [x.strip().lower() for x in (request.form.get("custom") or "").split(",") if x.strip()][:25] or None
 
     temp_name = f"{uuid.uuid4().hex}{ext}"
     temp_path = os.path.join(UPLOAD_DIR, temp_name)
     file.save(temp_path)
 
     try:
-        result = analyze(temp_path, target_role)
+        result = analyze(temp_path, target_role, custom)
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500

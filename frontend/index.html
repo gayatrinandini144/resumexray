@@ -68,6 +68,7 @@ select{flex:1;background:var(--bg2);color:var(--tx);border:1px solid var(--line)
  <div class="stats"><div>7<span>sections checked</span></div><div>5<span>target roles</span></div><div>0<span>files stored</span></div></div></div>
  <div class="panel"><div id="eb"></div>
   <div class="row"><label>TARGET ROLE</label><select id="role"></select></div>
+  <div class="row"><label>OR YOUR OWN</label><input id="custom" placeholder="skills you need, e.g. python, sql, aws" style="flex:1;background:var(--bg2);color:var(--tx);border:1px solid var(--line);border-radius:10px;padding:10px;font:500 13px var(--m)"></div>
   <div class="drop" id="drop"><div class="ic">📄</div><h3>Drop your resume here</h3><p>PDF or DOCX · max 5 MB · deleted right after analysis</p><button class="btn" type="button">Choose file</button>
    <input type="file" id="file" accept=".pdf,.docx,.doc" hidden>
    <div class="scan" id="scan"><div class="beam"></div><div class="log" id="log"></div></div></div>
@@ -77,8 +78,7 @@ select{flex:1;background:var(--bg2);color:var(--tx);border:1px solid var(--line)
 </div>
 <script>
 const $=id=>document.getElementById(id);
-const ROLES=["Web Developer","Data Analyst","Machine Learning Engineer","Java Backend Developer","GIS / Remote Sensing Analyst"];
-$('role').innerHTML='<option value="">Any / no target role</option>'+ROLES.map(r=>`<option>${r}</option>`).join('');
+fetch('/api/roles').then(r=>r.json()).then(R=>{$('role').innerHTML='<option value="">Any / no target role</option>'+R.map(r=>`<option>${r}</option>`).join('')});
 const esc=s=>{const d=document.createElement('div');d.textContent=s??'';return d.innerHTML};
 const drop=$('drop');
 drop.onclick=()=>$('file').click();
@@ -90,7 +90,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function logs(){const L=['> reading file…','> extracting text layer…','> detecting contact details…','> matching skills…','> checking sections & links…','> scoring…'];$('log').innerHTML='';for(const l of L){$('log').innerHTML+=l+'<br>';await sleep(320)}}
 async function go(f){
  $('eb').innerHTML='';$('scan').classList.add('on');logs();
- const fd=new FormData();fd.append('resume',f);if($('role').value)fd.append('role',$('role').value);
+ const fd=new FormData();fd.append('resume',f);if($('role').value)fd.append('role',$('role').value);if($('custom').value.trim())fd.append('custom',$('custom').value);
  try{const r=await fetch('/api/analyze',{method:'POST',body:fd});const d=await r.json();await sleep(2000);
   if(!r.ok)throw new Error(d.error||'Analysis failed');show(d)}
  catch(e){await sleep(500);$('eb').innerHTML=`<div class="err">${esc(e.message.includes('fetch')?'Cannot reach the server. Is it running?':e.message)}</div>`}
@@ -102,7 +102,7 @@ function show(d){
  const ck=Object.entries(i.sections).map(([k,v])=>`<div><span class="${v?'y':'n'}">${v?'✔':'✘'}</span>${k}</div>`).join('')+Object.entries(i.links).map(([k,v])=>`<div><span class="${v?'y':'n'}">${v?'✔':'✘'}</span>${k} link</div>`).join('');
  const sk=p.skills.length?p.skills.map(x=>`<span class="chip have">${esc(x)}</span>`).join(''):'<span style="color:var(--mu)">No skills detected</span>';
  const role=rf?`<div class="box in"><h4>Fit for ${esc(rf.role)}</h4><b style="font:800 40px var(--d)">${rf.match_percent}%</b><div class="bar"><i data-w="${rf.match_percent}"></i></div>
-  <div class="chips">${rf.missing_skills.length?rf.missing_skills.map(x=>`<span class="chip miss">+ ${esc(x)}</span>`).join(''):'<span class="y">No gaps. Great match!</span>'}</div></div>`:'<div class="box in"><h4>Target role</h4><p style="color:var(--mu)">Pick a target role before uploading to see your skill gaps.</p></div>';
+  <div class="chips">${rf.missing_skills.length?rf.missing_skills.map(x=>`<span class="chip miss">+ ${esc(x)}</span>`).join(''):'<span class="y">No gaps. Great match!</span>'}</div></div>`:'<div class="box in"><h4>Target role</h4><p style="color:var(--mu)">Pick a role, or type your own skills, before uploading to see your gaps.</p></div>';
  const tips=d.suggestions.map((t,k)=>`<div class="tip"><i>${k+1}</i><div>${esc(t)}</div></div>`).join('');
  $('res').innerHTML=`
  <div class="top in"><div class="gauge"><svg width="200" height="200"><circle cx="100" cy="100" r="88" fill="none" stroke="#1d2b24" stroke-width="16"/><circle id="arc" cx="100" cy="100" r="88" fill="none" stroke="${g[1]}" stroke-width="16" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C}" style="transition:stroke-dashoffset 1.6s cubic-bezier(.2,.8,.2,1)"/></svg><div class="gn"><b id="cnt">0</b><span>OUT OF 100</span></div></div>
